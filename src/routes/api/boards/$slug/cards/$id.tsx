@@ -35,10 +35,8 @@ export const Route = createFileRoute("/api/boards/$slug/cards/$id")({
 				input: z.object({
 					slug: z.string(),
 					id: z.string(),
-					// Move fields
 					columnId: z.string().optional(),
 					position: z.coerce.number().int().min(0).optional(),
-					// Edit fields
 					title: z.string().min(1).max(200).optional(),
 					description: z.string().max(2000).optional(),
 					priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
@@ -58,7 +56,8 @@ export const Route = createFileRoute("/api/boards/$slug/cards/$id")({
 						.limit(1);
 					if (!card) throw httpError.notFound("Card not found");
 
-					// Permission: coordinator of card's department, or any coordinator for department-less cards
+					// Department-scoped cards require a coordinator of that dept;
+					// department-less cards accept any coordinator role.
 					if (card.departmentId) {
 						requireCoordinatorOf(ctx, card.departmentId);
 					} else {
@@ -75,7 +74,6 @@ export const Route = createFileRoute("/api/boards/$slug/cards/$id")({
 						const sourceColumnId = card.columnId;
 						const isColumnChange = targetColumnId !== sourceColumnId;
 
-						// Count cards in target column to clamp position
 						const targetCards = await ctx.db
 							.select()
 							.from(boardCards)
@@ -99,13 +97,11 @@ export const Route = createFileRoute("/api/boards/$slug/cards/$id")({
 							})
 							.where(eq(boardCards.id, card.id));
 
-						// Re-index affected columns
 						await reindexColumn(ctx.db, targetColumnId);
 						if (isColumnChange) {
 							await reindexColumn(ctx.db, sourceColumnId);
 						}
 					} else {
-						// Content edit
 						const patch: Partial<typeof boardCards.$inferInsert> = {
 							updatedAt: new Date(),
 						};

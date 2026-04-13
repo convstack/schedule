@@ -1,8 +1,5 @@
-// schedule/src/db/seed.ts
 import { sql } from "drizzle-orm";
-import { nanoid } from "nanoid";
 import { db } from ".";
-import { assignmentHistory } from "./schema/assignment-history";
 import { assignments } from "./schema/assignments";
 import { boardCards } from "./schema/board-cards";
 import { boardColumns } from "./schema/board-columns";

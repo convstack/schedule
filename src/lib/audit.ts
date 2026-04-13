@@ -1,4 +1,3 @@
-// schedule/src/lib/audit.ts
 import { nanoid } from "nanoid";
 import type { Database } from "~/db";
 import { assignmentHistory } from "~/db/schema/assignment-history";

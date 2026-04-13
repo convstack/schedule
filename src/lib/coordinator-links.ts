@@ -1,14 +1,8 @@
-// schedule/src/lib/coordinator-links.ts
-// Extracted from shifts-router.ts — reusable across the shifts list + create endpoints.
 import type { HandlerContext } from "@convstack/service-sdk/handlers";
 import type { Database } from "~/db";
 
-/**
- * Build the create/edit FormConfig + _links block for the shifts list
- * response. Emitted whenever the user has any coordinator role — NOT gated
- * on the returned shift rows (avoids the chicken-and-egg where an empty
- * manage page has no "+ New" button).
- */
+// Emitted whenever the user has any coordinator role — NOT gated on the
+// returned rows, so an empty manage page still shows the "+ New" button.
 export async function buildCoordinatorLinks(context: HandlerContext<Database>) {
 	const coordRoles = context.orgRoles.filter(
 		(r) => r.role === "admin" || r.role === "owner",

@@ -27,21 +27,18 @@ export const Route = createFileRoute("/api/boards/$slug")({
 						.limit(1);
 					if (!board) throw httpError.notFound("Board not found");
 
-					// Fetch columns sorted by position
 					const columns = await ctx.db
 						.select()
 						.from(boardColumns)
 						.where(eq(boardColumns.boardId, board.id))
 						.orderBy(asc(boardColumns.position));
 
-					// Fetch all cards for this board sorted by position
 					const cards = await ctx.db
 						.select()
 						.from(boardCards)
 						.where(eq(boardCards.boardId, board.id))
 						.orderBy(asc(boardCards.position));
 
-					// Collect all user IDs to batch-lookup
 					const allUserIds = new Set<string>();
 					for (const card of cards) {
 						if (card.assigneeUserId) allUserIds.add(card.assigneeUserId);
@@ -51,7 +48,6 @@ export const Route = createFileRoute("/api/boards/$slug")({
 					}
 					const userNames = await lookupManyUserNames([...allUserIds]);
 
-					// Collect department IDs to batch-lookup
 					const deptIds = new Set<string>();
 					for (const card of cards) {
 						if (card.departmentId) deptIds.add(card.departmentId);
@@ -68,7 +64,6 @@ export const Route = createFileRoute("/api/boards/$slug")({
 						(r) => r.role === "admin" || r.role === "owner",
 					);
 
-					// Coordinator-specific data: resolved dept names, teams, members
 					let deptNameFallback = new Map<string, string>();
 					let deptOptions: Array<{ value: string; label: string }> = [];
 					const departmentTeams: Record<
@@ -114,7 +109,6 @@ export const Route = createFileRoute("/api/boards/$slug")({
 						}
 					}
 
-					// Project each card
 					const projectedCards = cards.map((card) => {
 						const canEdit =
 							isAnyCoordinator &&
@@ -174,7 +168,6 @@ export const Route = createFileRoute("/api/boards/$slug")({
 						};
 					});
 
-					// Top-level _links and _meta for coordinators
 					let topLinks:
 						| {
 								create?: string;
@@ -281,7 +274,6 @@ export const Route = createFileRoute("/api/boards/$slug")({
 					requireAnyCoordinator(ctx);
 					requireAuth(ctx);
 
-					// Find board
 					const [board] = await ctx.db
 						.select()
 						.from(boards)
@@ -289,7 +281,6 @@ export const Route = createFileRoute("/api/boards/$slug")({
 						.limit(1);
 					if (!board) throw httpError.notFound("Board not found");
 
-					// Verify column belongs to this board
 					const [column] = await ctx.db
 						.select()
 						.from(boardColumns)
@@ -299,7 +290,7 @@ export const Route = createFileRoute("/api/boards/$slug")({
 						throw httpError.badRequest("Column not found on this board");
 					}
 
-					// Position = count of existing cards in this column
+					// New card goes at the end of the column.
 					const [{ value: cardCount }] = await ctx.db
 						.select({ value: count() })
 						.from(boardCards)

@@ -1,4 +1,3 @@
-// schedule/src/lib/visibility.ts
 import type { HandlerContext } from "@convstack/service-sdk/handlers";
 import { lookupManyUserNames } from "./user-lookup";
 

@@ -1,4 +1,3 @@
-// schedule/src/lib/conflicts.ts
 import { and, eq, gt, lt, ne, sql } from "drizzle-orm";
 import { db } from "~/db";
 import { assignments } from "~/db/schema/assignments";

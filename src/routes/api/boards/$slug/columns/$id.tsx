@@ -24,7 +24,7 @@ export const Route = createFileRoute("/api/boards/$slug/columns/$id")({
 						.where(eq(boardColumns.id, ctx.input.id))
 						.limit(1);
 					if (!col) throw httpError.notFound("Column not found");
-					// Cascade deletes cards in this column (FK onDelete: cascade)
+					// FK cascade handles the cards in this column.
 					await ctx.db
 						.delete(boardColumns)
 						.where(eq(boardColumns.id, ctx.input.id));
