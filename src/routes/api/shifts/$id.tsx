@@ -22,6 +22,13 @@ export const Route = createFileRoute("/api/shifts/$id")({
 						.where(eq(shifts.id, ctx.input.id))
 						.limit(1);
 					if (!shift) throw httpError.notFound("Shift not found");
+					// drafts and archived shifts are for coordinators, as in the list
+					const isCoordinator = ctx.orgRoles.some(
+						(r) => r.role === "admin" || r.role === "owner",
+					);
+					if (shift.status !== "published" && !isCoordinator) {
+						throw httpError.notFound("Shift not found");
+					}
 					const shiftAssignments = await ctx.db
 						.select()
 						.from(assignments)

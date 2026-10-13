@@ -201,10 +201,7 @@ export const SCHEDULE_MANIFEST = defineManifest({
 			}),
 		]),
 	],
-	permissions: [
-		// Department coordinator permission is computed from org roles
-		// (`admin`/`owner` in the shift's department), NOT from this list —
-		// that's a per-department gate that can't be modeled as a flat
-		// service-wide permission string.
-	],
+	// coordinator rights come from department roles in the proof; schedule:manage
+	// lets someone other than a board's creator delete its columns
+	permissions: ["schedule:manage"],
 });

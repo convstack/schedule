@@ -19,6 +19,13 @@ export const Route = createFileRoute("/api/events/$id")({
 						.where(eq(events.id, ctx.input.id))
 						.limit(1);
 					if (!row) throw httpError.notFound("Event not found");
+					// drafts and archived events are for coordinators, as in the list
+					const isCoordinator = ctx.orgRoles.some(
+						(r) => r.role === "admin" || r.role === "owner",
+					);
+					if (row.status !== "published" && !isCoordinator) {
+						throw httpError.notFound("Event not found");
+					}
 					return {
 						id: row.id,
 						title: row.title,

@@ -1,12 +1,24 @@
 import { createHandler, httpError } from "@convstack/service-sdk/handlers";
 import { requireAuth } from "@convstack/service-sdk/permissions";
 import { createFileRoute } from "@tanstack/react-router";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "~/db";
 import { boardCardComments } from "~/db/schema/board-card-comments";
 import { boardCards } from "~/db/schema/board-cards";
+import { boards } from "~/db/schema/boards";
 import { lookupManyUserNames } from "~/lib/user-lookup";
+
+// the card must sit on the board named in the url, whatever its id
+async function cardOnBoard(tx: typeof db, slug: string, cardId: string) {
+	const [row] = await tx
+		.select({ id: boardCards.id })
+		.from(boardCards)
+		.innerJoin(boards, eq(boardCards.boardId, boards.id))
+		.where(and(eq(boardCards.id, cardId), eq(boards.slug, slug)))
+		.limit(1);
+	if (!row) throw httpError.notFound("Card not found");
+}
 
 export const Route = createFileRoute("/api/boards/$slug/cards/$id/comments")({
 	server: {
@@ -15,12 +27,7 @@ export const Route = createFileRoute("/api/boards/$slug/cards/$id/comments")({
 				db,
 				input: z.object({ slug: z.string(), id: z.string() }),
 				handler: async (ctx) => {
-					const [card] = await ctx.db
-						.select()
-						.from(boardCards)
-						.where(eq(boardCards.id, ctx.input.id))
-						.limit(1);
-					if (!card) throw httpError.notFound("Card not found");
+					await cardOnBoard(ctx.db, ctx.input.slug, ctx.input.id);
 
 					const comments = await ctx.db
 						.select()
@@ -53,12 +60,7 @@ export const Route = createFileRoute("/api/boards/$slug/cards/$id/comments")({
 				handler: async (ctx) => {
 					requireAuth(ctx);
 
-					const [card] = await ctx.db
-						.select()
-						.from(boardCards)
-						.where(eq(boardCards.id, ctx.input.id))
-						.limit(1);
-					if (!card) throw httpError.notFound("Card not found");
+					await cardOnBoard(ctx.db, ctx.input.slug, ctx.input.id);
 
 					const [comment] = await ctx.db
 						.insert(boardCardComments)

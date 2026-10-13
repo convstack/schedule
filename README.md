@@ -36,6 +36,7 @@ Browser → Dashboard (UI) → API Proxy → Schedule (oRPC → REST API + Postg
 - **Coordinators** — lanyard department members with `admin` or `owner` role. They manage shifts and approve requests for their department.
 - **Critters** — any logged-in user who is NOT a department member. They volunteer for shifts during con time.
 - **Visibility tiers** — public (counts only), staffer (roster with names), coordinator (full write access).
+- **Board columns** — only a board's creator, or someone granted `schedule:manage`, can delete its columns, because that deletes every card in them.
 
 ## Tech Stack
 
@@ -151,8 +152,8 @@ Schedule will:
 
 | Endpoint | Method | Permission | Purpose |
 |---|---|---|---|
-| `/api/events` | GET | Public | List events (ScheduleData) |
-| `/api/events/:id` | GET | Public | Single event |
+| `/api/events` | GET | Authenticated | List events (ScheduleData) |
+| `/api/events/:id` | GET | Authenticated | Single event |
 | `/api/events` | POST | Any coordinator | Create event |
 | `/api/events/:id` | PATCH | Any coordinator | Update event |
 | `/api/events/:id` | DELETE | Any coordinator | Delete event |
@@ -163,8 +164,8 @@ Schedule will:
 
 | Endpoint | Method | Permission | Purpose |
 |---|---|---|---|
-| `/api/shifts` | GET | Public | List shifts (ScheduleData) |
-| `/api/shifts/:id` | GET | Public | Single shift |
+| `/api/shifts` | GET | Authenticated | List shifts (ScheduleData) |
+| `/api/shifts/:id` | GET | Authenticated | Single shift |
 | `/api/shifts/mine` | GET | Authenticated | My assignments |
 | `/api/shifts` | POST | Dept coordinator | Create shift |
 | `/api/shifts/:id` | PATCH | Dept coordinator | Update shift |

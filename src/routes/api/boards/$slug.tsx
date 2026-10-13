@@ -331,14 +331,25 @@ export const Route = createFileRoute("/api/boards/$slug")({
 				db,
 				input: z.object({ slug: z.string() }),
 				handler: async (ctx) => {
-					requireAnyCoordinator(ctx);
 					requireAuth(ctx);
+					if (!ctx.permissions.includes("schedule:manage")) {
+						requireAnyCoordinator(ctx);
+					}
 					const [board] = await ctx.db
 						.select()
 						.from(boards)
 						.where(eq(boards.slug, ctx.input.slug))
 						.limit(1);
 					if (!board) throw httpError.notFound("Board not found");
+					// deleting a board cascades to every card on it, other departments' included
+					if (
+						board.createdBy !== ctx.user?.id &&
+						!ctx.permissions.includes("schedule:manage")
+					) {
+						throw httpError.forbidden(
+							"Only the board's creator or a schedule manager can delete it",
+						);
+					}
 					await ctx.db.delete(boards).where(eq(boards.id, board.id));
 					return { ok: true as const };
 				},

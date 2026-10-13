@@ -41,3 +41,7 @@ Bun.serve({
 });
 
 console.log(`Schedule server listening on http://localhost:${port}`);
+
+import("./src/server/services/self-register.ts")
+	.then(({ registerSchedule }) => registerSchedule())
+	.catch((err) => console.warn("Failed to register:", err));

@@ -5,13 +5,17 @@ import {
 	requireCoordinatorOf,
 } from "@convstack/service-sdk/permissions";
 import { createFileRoute } from "@tanstack/react-router";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "~/db";
 import { boardCards } from "~/db/schema/board-cards";
+import { boardColumns } from "~/db/schema/board-columns";
+import { boards } from "~/db/schema/boards";
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /** Re-index positions 0, 1, 2, … for all cards in a column (closes gaps after move/delete). */
-async function reindexColumn(tx: typeof db, columnId: string): Promise<void> {
+async function reindexColumn(tx: Tx, columnId: string): Promise<void> {
 	const remaining = await tx
 		.select()
 		.from(boardCards)
@@ -25,6 +29,25 @@ async function reindexColumn(tx: typeof db, columnId: string): Promise<void> {
 				.where(eq(boardCards.id, remaining[i].id));
 		}
 	}
+}
+
+/** The card must sit on the board named in the url, whatever its id. */
+async function cardOnBoard(
+	tx: typeof db,
+	slug: string,
+	cardId: string,
+): Promise<{
+	card: typeof boardCards.$inferSelect;
+	boardId: string;
+}> {
+	const [row] = await tx
+		.select({ card: boardCards, boardId: boards.id })
+		.from(boardCards)
+		.innerJoin(boards, eq(boardCards.boardId, boards.id))
+		.where(and(eq(boardCards.id, cardId), eq(boards.slug, slug)))
+		.limit(1);
+	if (!row) throw httpError.notFound("Card not found");
+	return row;
 }
 
 export const Route = createFileRoute("/api/boards/$slug/cards/$id")({
@@ -49,12 +72,11 @@ export const Route = createFileRoute("/api/boards/$slug/cards/$id")({
 					link: z.string().max(500).optional(),
 				}),
 				handler: async (ctx) => {
-					const [card] = await ctx.db
-						.select()
-						.from(boardCards)
-						.where(eq(boardCards.id, ctx.input.id))
-						.limit(1);
-					if (!card) throw httpError.notFound("Card not found");
+					const { card, boardId } = await cardOnBoard(
+						ctx.db,
+						ctx.input.slug,
+						ctx.input.id,
+					);
 
 					// Department-scoped cards require a coordinator of that dept;
 					// department-less cards accept any coordinator role.
@@ -65,68 +87,89 @@ export const Route = createFileRoute("/api/boards/$slug/cards/$id")({
 					}
 					requireAuth(ctx);
 
+					const patch: Partial<typeof boardCards.$inferInsert> = {
+						updatedAt: new Date(),
+					};
+					if (ctx.input.title !== undefined) patch.title = ctx.input.title;
+					if (ctx.input.description !== undefined)
+						patch.description = ctx.input.description;
+					if (ctx.input.priority !== undefined)
+						patch.priority = ctx.input.priority;
+					if (ctx.input.departmentId !== undefined)
+						patch.departmentId = ctx.input.departmentId;
+					if (ctx.input.teamId !== undefined) patch.teamId = ctx.input.teamId;
+					if (ctx.input.assigneeUserId !== undefined)
+						patch.assigneeUserId = ctx.input.assigneeUserId;
+					if (ctx.input.collaboratorUserIds !== undefined)
+						patch.collaboratorUserIds = ctx.input.collaboratorUserIds;
+					if (ctx.input.labels !== undefined) patch.labels = ctx.input.labels;
+					if (ctx.input.progress !== undefined)
+						patch.progress = ctx.input.progress;
+					if (ctx.input.link !== undefined) patch.link = ctx.input.link;
+
 					const isMove =
 						ctx.input.columnId !== undefined ||
 						ctx.input.position !== undefined;
 
-					if (isMove) {
-						const targetColumnId = ctx.input.columnId ?? card.columnId;
-						const sourceColumnId = card.columnId;
-						const isColumnChange = targetColumnId !== sourceColumnId;
+					if (!isMove) {
+						await ctx.db
+							.update(boardCards)
+							.set(patch)
+							.where(eq(boardCards.id, card.id));
+						return { ok: true as const };
+					}
 
-						const targetCards = await ctx.db
+					const targetColumnId = ctx.input.columnId ?? card.columnId;
+					const sourceColumnId = card.columnId;
+					const [target] = await ctx.db
+						.select({ id: boardColumns.id })
+						.from(boardColumns)
+						.where(
+							and(
+								eq(boardColumns.id, targetColumnId),
+								eq(boardColumns.boardId, boardId),
+							),
+						)
+						.limit(1);
+					if (!target) throw httpError.notFound("Column not found");
+					const isColumnChange = targetColumnId !== sourceColumnId;
+
+					// one transaction: a move renumbers several cards, and half of
+					// that would leave two of them sharing a position
+					await ctx.db.transaction(async (tx) => {
+						const targetCards = await tx
 							.select()
 							.from(boardCards)
 							.where(eq(boardCards.columnId, targetColumnId))
 							.orderBy(asc(boardCards.position));
 
-						const maxPos = isColumnChange
-							? targetCards.length
-							: targetCards.length - 1;
+						const ordered = targetCards.filter((c) => c.id !== card.id);
+						// no position asked: the end of another column, or where it already is
+						const unasked = isColumnChange
+							? ordered.length
+							: targetCards.findIndex((c) => c.id === card.id);
 						const newPos = Math.min(
-							ctx.input.position ?? maxPos,
-							Math.max(0, maxPos),
+							ctx.input.position ?? unasked,
+							ordered.length,
 						);
-
-						await ctx.db
-							.update(boardCards)
-							.set({
-								columnId: targetColumnId,
-								position: newPos,
-								updatedAt: new Date(),
-							})
-							.where(eq(boardCards.id, card.id));
-
-						await reindexColumn(ctx.db, targetColumnId);
-						if (isColumnChange) {
-							await reindexColumn(ctx.db, sourceColumnId);
+						ordered.splice(newPos, 0, card);
+						for (let i = 0; i < ordered.length; i++) {
+							if (ordered[i].id === card.id) {
+								await tx
+									.update(boardCards)
+									.set({ ...patch, columnId: targetColumnId, position: i })
+									.where(eq(boardCards.id, card.id));
+							} else if (ordered[i].position !== i) {
+								await tx
+									.update(boardCards)
+									.set({ position: i })
+									.where(eq(boardCards.id, ordered[i].id));
+							}
 						}
-					} else {
-						const patch: Partial<typeof boardCards.$inferInsert> = {
-							updatedAt: new Date(),
-						};
-						if (ctx.input.title !== undefined) patch.title = ctx.input.title;
-						if (ctx.input.description !== undefined)
-							patch.description = ctx.input.description;
-						if (ctx.input.priority !== undefined)
-							patch.priority = ctx.input.priority;
-						if (ctx.input.departmentId !== undefined)
-							patch.departmentId = ctx.input.departmentId;
-						if (ctx.input.teamId !== undefined) patch.teamId = ctx.input.teamId;
-						if (ctx.input.assigneeUserId !== undefined)
-							patch.assigneeUserId = ctx.input.assigneeUserId;
-						if (ctx.input.collaboratorUserIds !== undefined)
-							patch.collaboratorUserIds = ctx.input.collaboratorUserIds;
-						if (ctx.input.labels !== undefined) patch.labels = ctx.input.labels;
-						if (ctx.input.progress !== undefined)
-							patch.progress = ctx.input.progress;
-						if (ctx.input.link !== undefined) patch.link = ctx.input.link;
-
-						await ctx.db
-							.update(boardCards)
-							.set(patch)
-							.where(eq(boardCards.id, card.id));
-					}
+						if (isColumnChange) {
+							await reindexColumn(tx, sourceColumnId);
+						}
+					});
 
 					return { ok: true as const };
 				},
@@ -136,12 +179,11 @@ export const Route = createFileRoute("/api/boards/$slug/cards/$id")({
 				db,
 				input: z.object({ slug: z.string(), id: z.string() }),
 				handler: async (ctx) => {
-					const [card] = await ctx.db
-						.select()
-						.from(boardCards)
-						.where(eq(boardCards.id, ctx.input.id))
-						.limit(1);
-					if (!card) throw httpError.notFound("Card not found");
+					const { card } = await cardOnBoard(
+						ctx.db,
+						ctx.input.slug,
+						ctx.input.id,
+					);
 
 					if (card.departmentId) {
 						requireCoordinatorOf(ctx, card.departmentId);
@@ -150,9 +192,10 @@ export const Route = createFileRoute("/api/boards/$slug/cards/$id")({
 					}
 					requireAuth(ctx);
 
-					const columnId = card.columnId;
-					await ctx.db.delete(boardCards).where(eq(boardCards.id, card.id));
-					await reindexColumn(ctx.db, columnId);
+					await ctx.db.transaction(async (tx) => {
+						await tx.delete(boardCards).where(eq(boardCards.id, card.id));
+						await reindexColumn(tx, card.columnId);
+					});
 
 					return { ok: true as const };
 				},

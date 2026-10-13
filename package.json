@@ -13,12 +13,13 @@
 		"db:seed": "bun run src/db/seed.ts",
 		"db:studio": "drizzle-kit studio",
 		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"format": "biome format --write ."
 	},
 	"dependencies": {
-		"@convstack/service-sdk": "^0.2.0",
+		"@convstack/service-sdk": "^0.3.2",
 		"@tanstack/react-router": "^1.168.2",
 		"@tanstack/react-start": "^1.167.3",
 		"drizzle-orm": "1.0.0-beta.20-afec359",
@@ -40,6 +41,7 @@
 		"drizzle-kit": "1.0.0-beta.20-afec359",
 		"tailwindcss": "^4.2.2",
 		"typescript": "^6.0.2",
-		"vite": "^8.0.1"
+		"vite": "^8.0.1",
+		"vitest": "^4.1.0"
 	}
 }
